@@ -1,0 +1,65 @@
+name: Release Build
+
+on:
+  push:
+#    branches:
+#      - main
+#    pull_request:
+#    workflow_dispatch:
+    tags:
+      - v*
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Retrieve Release Keystore
+        uses: actions/checkout@v3
+        with:
+          repository: palfans/android_keystore
+          token: ${{ secrets.KEYSTORE_TOKEN }}
+          path: keystore
+      - name: Build With Gradle
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
+      - name: Release App
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get Version Name
+        uses: actions/github-script@v3
+        id: get-version
+        with:
+          script: |
+            const str=process.env.GITHUB_REF;
+            return str.substring(str.indexOf("v"));
+          result-encoding: string
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: app/build/outputs/apk/release/app-release.apk
+          asset_name: TVBox-${{steps.get-version.outputs.result}}.apk
+          asset_content_type: application/vnd.android.package-archiv
+      - name: Prepare App
+        run: |
+          mkdir -p ${{ github.workspace }}/apk/
+          for file in `find ~ -name "*.apk" -print`; do
+            mv "$file" ${{ github.workspace }}/apk/
+          done
+      - name: Upload App To Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: com.github.tvbox.osc
+          path: ${{ github.workspace }}/apk/*
